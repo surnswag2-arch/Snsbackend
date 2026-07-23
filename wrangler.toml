@@ -1,0 +1,25 @@
+name = "sur-swag-backend"
+main = "src/index.ts"
+compatibility_date = "2026-07-01"
+
+# ── DO NOT hardcode real secrets here. Use `wrangler secret put` in production. ──
+
+[vars]
+SUPABASE_URL = "https://your-project.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY = "your-service-role-key"
+SUPABASE_ANON_KEY = "your-anon-key"
+UPSTASH_REDIS_URL = "https://your-upstash-redis-url"
+UPSTASH_REDIS_TOKEN = "your-upstash-redis-token"
+R2_BUCKET_NAME = "sur-swag-raw-uploads"
+CLOUDFLARE_STREAM_TOKEN = "your-stream-token"
+CLOUDFLARE_ACCOUNT_ID = "your-account-id"
+MEILISEARCH_URL = "https://your-meilisearch-url"
+MEILISEARCH_API_KEY = "your-meilisearch-key"
+STRIPE_SECRET_KEY = "your-stripe-secret-key"
+STRIPE_WEBHOOK_SECRET = "your-webhook-secret"
+DEFAULT_LOCALE = "bn"
+REGIONS = "south-asia,europe,us-east,us-west"
+
+[[r2_buckets]]
+binding = "R2_UPLOADS"
+bucket_name = "sur-swag-raw-uploads"
