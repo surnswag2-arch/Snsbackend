@@ -16,14 +16,7 @@ CREATE TABLE notifications (
   read       BOOLEAN NOT NULL DEFAULT false,
   locale     TEXT NOT NULL DEFAULT 'bn',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-) PARTITION BY RANGE (created_at);
-
-CREATE TABLE notifications_2026_07 PARTITION OF notifications
-  FOR VALUES FROM ('2026-07-01') TO ('2026-08-01');
-CREATE TABLE notifications_2026_08 PARTITION OF notifications
-  FOR VALUES FROM ('2026-08-01') TO ('2026-09-01');
-CREATE TABLE notifications_default PARTITION OF notifications
-  FOR VALUES FROM ('2026-06-01') TO ('2026-07-01');
+);
 
 CREATE INDEX idx_notifications_user ON notifications (user_id, created_at DESC);
 CREATE INDEX idx_notifications_read ON notifications (user_id, read) WHERE read = false;

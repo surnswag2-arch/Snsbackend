@@ -1,45 +1,48 @@
 import { createMiddleware } from "hono/factory";
+import { CacheService } from "../services/cache.service";
 import type { Variables } from "../config";
 
-interface RateLimitConfig {
-  maxRequests: number;
-  windowMs: number;
-}
-
-const DEFAULT_CONFIG: RateLimitConfig = { maxRequests: 100, windowMs: 60000 };
-const ENDPOINT_LIMITS: Record<string, RateLimitConfig> = {
-  "/auth/login": { maxRequests: 10, windowMs: 60000 },
-  "/auth/signup": { maxRequests: 5, windowMs: 60000 },
-  "/auth/otp": { maxRequests: 3, windowMs: 60000 },
-  "/upload/url": { maxRequests: 10, windowMs: 60000 },
-  "/videos/feed": { maxRequests: 60, windowMs: 60000 },
+const ENDPOINT_LIMITS: Record<string, { max: number; window: number }> = {
+  "POST:/auth/login": { max: 10, window: 60000 },
+  "POST:/auth/signup": { max: 5, window: 60000 },
+  "POST:/auth/otp": { max: 3, window: 60000 },
+  "POST:/upload": { max: 10, window: 60000 },
+  "GET:/api/videos/feed": { max: 60, window: 60000 },
 };
 
-// Simple in-memory rate limiter for Workers edge.
-// In production, use Upstash Redis for distributed counters.
+const DEFAULT_LIMIT = { max: 100, window: 60000 };
+
 export const rateLimitMiddleware = createMiddleware<{ Variables: Variables }>(async (c, next) => {
+  const method = c.req.method;
   const path = c.req.path;
-  const config = Object.entries(ENDPOINT_LIMITS).find(([key]) => path.includes(key))?.[1] || DEFAULT_CONFIG;
+
+  // Match endpoint config
+  let config = DEFAULT_LIMIT;
+  for (const [pattern, limit] of Object.entries(ENDPOINT_LIMITS)) {
+    const [pMethod, pPath] = pattern.split(":");
+    if (pMethod === method && path.startsWith(pPath)) {
+      config = limit;
+      break;
+    }
+  }
 
   const ip = c.req.header("CF-Connecting-IP") || c.req.header("x-real-ip") || "unknown";
-  const userId = c.get("user")?.id || ip;
-  const key = `ratelimit:${path}:${userId}`;
+  const key = `ratelimit:${method}:${path}:${ip}`;
 
   try {
-    // If using Upstash Redis-based rate limiting from a Worker:
-    // const upstashUrl = c.env.UPSTASH_REDIS_URL;
-    // const response = await fetch(`${upstashUrl}/incr/${key}`, {
-    //   headers: { Authorization: `Bearer ${c.env.UPSTASH_REDIS_TOKEN}` },
-    // });
-    // const count = await response.json();
-    // if (count > config.maxRequests) { ... }
+    const cache = new CacheService(c.env as { UPSTASH_REDIS_URL: string; UPSTASH_REDIS_TOKEN: string });
+    const result = await cache.checkRateLimit(key, config.max, config.window);
 
-    // For now, pass through — rate limiting is configured at the Cloudflare WAF level
-    // and via the Upstash service layer in cache.service.ts
-    void config;
-    void key;
+    c.header("X-RateLimit-Limit", String(config.max));
+    c.header("X-RateLimit-Remaining", String(result.remaining));
+    c.header("X-RateLimit-Reset", String(Math.ceil(result.resetMs / 1000)));
+
+    if (!result.allowed) {
+      c.header("Retry-After", String(Math.ceil(result.resetMs / 1000)));
+      return c.json({ error: { code: "RATE_LIMIT_EXCEEDED", message: "Too many requests. Please wait." } }, 429);
+    }
   } catch {
-    // Rate limiter failure should not block requests in production
+    // If Redis is unavailable, allow the request through
   }
 
   await next();

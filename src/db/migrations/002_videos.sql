@@ -28,15 +28,7 @@ CREATE TABLE videos (
   views_count     INTEGER NOT NULL DEFAULT 0,
   created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-) PARTITION BY RANGE (created_at);
-
--- Create initial partitions (monthly)
-CREATE TABLE videos_2026_07 PARTITION OF videos
-  FOR VALUES FROM ('2026-07-01') TO ('2026-08-01');
-CREATE TABLE videos_2026_08 PARTITION OF videos
-  FOR VALUES FROM ('2026-08-01') TO ('2026-09-01');
-CREATE TABLE videos_default PARTITION OF videos
-  FOR VALUES FROM ('2026-06-01') TO ('2026-07-01');
+);
 
 CREATE INDEX idx_videos_creator_id ON videos (creator_id, created_at DESC);
 CREATE INDEX idx_videos_created_at ON videos (created_at DESC);

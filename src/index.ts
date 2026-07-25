@@ -8,6 +8,7 @@ import { errorMiddleware, notFoundHandler } from "./middleware/error";
 import { i18nMiddleware } from "./middleware/i18n";
 import { rateLimitMiddleware } from "./middleware/rate-limit";
 import { optionalAuthMiddleware } from "./middleware/auth";
+void optionalAuthMiddleware;
 
 // Routes
 import authRoutes from "./routes/auth";
@@ -23,8 +24,23 @@ import adminRoutes from "./routes/admin";
 const app = new Hono<{ Bindings: Env; Variables: Variables }>();
 
 // ── Global Middleware ──
+const ALLOWED_ORIGINS = [
+  "https://surswag.com",
+  "http://localhost:5173",
+  "http://localhost:4173",
+  // Cloudflare Pages preview deployments
+  /^https:\/\/[a-z0-9-]+\.snsfrontent\.pages\.dev$/,
+  /^https:\/\/[a-z0-9-]+\.sur-swag\.pages\.dev$/,
+];
+
 app.use("*", cors({
-  origin: ["https://surswag.com", "http://localhost:5173"],
+  origin: (origin) => {
+    if (!origin) return "https://surswag.com";
+    if (ALLOWED_ORIGINS.some((o) => (typeof o === "string" ? o === origin : o.test(origin)))) {
+      return origin;
+    }
+    return "https://surswag.com";
+  },
   credentials: true,
   maxAge: 86400,
 }));
@@ -58,7 +74,7 @@ app.route("/search", searchRoutes);
 app.route("/admin", adminRoutes);
 
 // ── 404 Handler ──
-app.notFound(notFoundHandler);
+app.notFound(notFoundHandler as unknown as Parameters<typeof app.notFound>[0]);
 
 // ── Export for Cloudflare Workers ──
 export default app;

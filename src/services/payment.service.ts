@@ -1,5 +1,4 @@
-// Payment gateway abstraction — allows plugging different payment providers
-// behind a common interface without touching business logic.
+import Stripe from "stripe";
 
 export interface PaymentIntent {
   id: string;
@@ -23,7 +22,7 @@ export interface PaymentProvider {
   name: string;
   createCheckout(params: CheckoutParams): Promise<CheckoutSession>;
   createPaymentIntent(params: PaymentIntentParams): Promise<PaymentIntent>;
-  verifyWebhook(payload: unknown, signature: string): Promise<unknown>;
+  verifyWebhook(payload: string, signature: string): Promise<unknown>;
   createCustomer(email: string, name: string): Promise<string>;
   createSubscription(customerId: string, priceId: string): Promise<{ id: string; status: string }>;
   cancelSubscription(subscriptionId: string): Promise<void>;
@@ -47,59 +46,58 @@ export interface PaymentIntentParams {
   description?: string;
 }
 
-// ─── Stripe Provider ───
 export class StripeProvider implements PaymentProvider {
   name = "stripe";
-  private stripe: any; // Stripe instance
+  private stripe: Stripe;
 
   constructor(secretKey: string) {
-    // In production: new Stripe(secretKey)
-    this.stripe = { _key: secretKey };
+    this.stripe = new Stripe(secretKey, { apiVersion: "2025-02-24" as any });
+  }
+
+  setWebhookSecret(secret: string): void {
+    (this.stripe as any).webhookSecret = secret;
   }
 
   async createCheckout(params: CheckoutParams): Promise<CheckoutSession> {
-    // In production:
-    // const session = await this.stripe.checkout.sessions.create({ ... });
-    return {
-      id: `cs_${crypto.randomUUID()}`,
-      url: `https://checkout.stripe.com/pay/${crypto.randomUUID()}`,
-      amount: params.amount,
-      currency: params.currency,
-      status: "pending",
-      provider: "stripe",
-    };
+    const session = await this.stripe.checkout.sessions.create({
+      line_items: [{ price_data: { currency: params.currency, product_data: { name: params.description || "Purchase" }, unit_amount: params.amount * 100 }, quantity: 1 }],
+      mode: "payment",
+      success_url: params.successUrl,
+      cancel_url: params.cancelUrl,
+      customer: params.customerId,
+      metadata: params.metadata,
+    });
+    return { id: session.id, url: session.url || undefined, amount: params.amount, currency: params.currency, status: session.status || "pending", provider: "stripe" };
   }
 
   async createPaymentIntent(params: PaymentIntentParams): Promise<PaymentIntent> {
-    return {
-      id: `pi_${crypto.randomUUID()}`,
-      clientSecret: `${crypto.randomUUID()}_secret_${crypto.randomUUID()}`,
-      amount: params.amount,
-      currency: params.currency,
-      status: "requires_payment_method",
-      provider: "stripe",
-    };
+    const intent = await this.stripe.paymentIntents.create({
+      amount: params.amount * 100, currency: params.currency, metadata: params.metadata, description: params.description,
+    });
+    return { id: intent.id, clientSecret: intent.client_secret || undefined, amount: params.amount, currency: params.currency, status: intent.status, provider: "stripe" };
   }
 
-  async verifyWebhook(payload: unknown, signature: string): Promise<unknown> {
-    // In production: stripe.webhooks.constructEvent(payload, signature, webhookSecret)
-    return payload;
+  async verifyWebhook(payload: string, signature: string): Promise<unknown> {
+    const secret = (this.stripe as any).webhookSecret || "";
+    if (!secret) throw new Error("Stripe webhook secret not configured");
+    return this.stripe.webhooks.constructEvent(payload, signature, secret);
   }
 
   async createCustomer(email: string, name: string): Promise<string> {
-    return `cus_${crypto.randomUUID()}`;
+    const customer = await this.stripe.customers.create({ email, name });
+    return customer.id;
   }
 
   async createSubscription(customerId: string, priceId: string): Promise<{ id: string; status: string }> {
-    return { id: `sub_${crypto.randomUUID()}`, status: "active" };
+    const sub = await this.stripe.subscriptions.create({ customer: customerId, items: [{ price: priceId }] });
+    return { id: sub.id, status: sub.status };
   }
 
   async cancelSubscription(subscriptionId: string): Promise<void> {
-    // In production: stripe.subscriptions.cancel(subscriptionId)
+    await this.stripe.subscriptions.cancel(subscriptionId);
   }
 }
 
-// ─── Provider Registry ───
 export class PaymentGateway {
   private providers: Map<string, PaymentProvider> = new Map();
   private defaultProvider: string;
@@ -127,7 +125,7 @@ export class PaymentGateway {
     return this.getProvider(params.provider).createPaymentIntent(params);
   }
 
-  async verifyWebhook(provider: string, payload: unknown, signature: string): Promise<unknown> {
+  async verifyWebhook(provider: string, payload: string, signature: string): Promise<unknown> {
     return this.getProvider(provider).verifyWebhook(payload, signature);
   }
 

@@ -9,18 +9,16 @@
     "types": "wrangler types",
     "migrate:dev": "tsx src/db/migrate.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "build": "tsc --noEmit"
   },
   "dependencies": {
     "@hono/zod-validator": "^0.4.3",
-    "bullmq": "^5.46.5",
     "hono": "^4.7.5",
-    "ioredis": "^5.6.1",
     "stripe": "^18.0.0",
     "zod": "^3.24.3"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260723.1",
     "tsx": "^4.23.1",
     "typescript": "^5.8.3",
     "wrangler": "^4.12.0"

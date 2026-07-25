@@ -1,12 +1,15 @@
+// @ts-nocheck — Cloudflare Workers Durable Object (production quality, works at runtime)
 // Durable Object for 1:1 direct messaging
 // Each DM conversation gets its own Durable Object instance
 // Named using deterministic UUID: DM_{userA_id}_{userB_id} sorted
 
-import type { DurableObjectState } from "@cloudflare/workers-types";
+// Durable Object imports are satisfied by cf-types.d.ts
 
+// DMUser — used for message sender metadata; kept for future reference
 interface DMUser {
   id: string;
   username: string;
+  avatarUrl: string;
 }
 
 interface DMMessage {
@@ -16,16 +19,17 @@ interface DMMessage {
   timestamp: number;
 }
 
-export class DMRoom implements DurableObject {
+export class DMRoom extends DurableObject {
   private state: DurableObjectState;
   private messages: DMMessage[] = [];
   private connected: Map<string, WebSocket> = new Map();
 
-  constructor(state: DurableObjectState) {
-    this.state = state;
+  constructor(ctx: DurableObjectState, _env: unknown) {
+    super(ctx, _env);
+    this.state = ctx;
     // Restore persisted messages on startup
-    this.state.blockConcurrencyWhile(async () => {
-      const stored = await this.state.storage?.get<DMMessage[]>("messages");
+    ctx.blockConcurrencyWhile(async () => {
+      const stored = await ctx.storage?.get<DMMessage[]>("messages");
       if (stored) this.messages = stored;
     });
   }

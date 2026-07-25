@@ -1,5 +1,3 @@
-import type { ExecutionContext } from "@cloudflare/workers-types";
-
 export interface Env {
   // Supabase
   SUPABASE_URL: string;

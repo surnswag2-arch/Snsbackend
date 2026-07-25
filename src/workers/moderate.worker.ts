@@ -1,45 +1,23 @@
-// Queue worker: runs AI moderation on uploaded videos
+import { ModerationService } from "../services/moderation.service";
 
-export async function handleModerateJob(job: {
-  data: { videoId: string; r2Key: string };
-}, env: any) {
+export async function handleModerateJob(job: { data: { videoId: string; r2Key: string } }, env: Record<string, unknown>) {
   const { videoId, r2Key } = job.data;
+  console.log(`[ModerateWorker] Moderating video ${videoId} (${r2Key})`);
 
-  console.log(`[ModerateWorker] Moderating video ${videoId}`);
+  try {
+    const moderation = new ModerationService(env as { SUPABASE_URL: string; SUPABASE_SERVICE_ROLE_KEY: string });
+    const result = await moderation.moderateVideo(videoId, r2Key);
+    await moderation.applyModerationResult(videoId, result.isFlagged, result.categories);
 
-  // In production:
-  // 1. Download video or send URL to moderation API
-  //    (Sightengine, Azure Content Safety, AWS Rekognition, etc.)
-  //
-  // 2. Parse results — check for:
-  //    - Nudity/sexual content
-  //    - Violence
-  //    - Hate speech (Bengali + English)
-  //    - Copyrighted music detection
-  //
-  // 3. Return isFlagged + categories + confidence
+    if (result.isFlagged) {
+      console.log(`[ModerateWorker] Video ${videoId} flagged: ${result.categories.join(", ")}`);
+    } else {
+      console.log(`[ModerateWorker] Video ${videoId} passed moderation`);
+    }
 
-  // Stub: always pass
-  const isFlagged = false;
-  const confidence = 0.98;
-  const categories: string[] = [];
-
-  // Update video status
-  const status = isFlagged ? "flagged" : "ready";
-  await fetch(`${env.SUPABASE_URL}/rest/v1/videos?id=eq.${videoId}`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      "apikey": env.SUPABASE_SERVICE_ROLE_KEY,
-      "Authorization": `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-    },
-    body: JSON.stringify({
-      status,
-      updated_at: new Date().toISOString(),
-    }),
-  });
-
-  console.log(`[ModerateWorker] Video ${videoId}: status=${status}, confidence=${confidence}`);
-
-  return { success: true, isFlagged, confidence, categories };
+    return result;
+  } catch (err) {
+    console.error(`[ModerateWorker] Error: ${err}`);
+    throw err;
+  }
 }
